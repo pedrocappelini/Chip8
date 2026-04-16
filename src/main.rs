@@ -17,15 +17,13 @@ async fn display_render(mut chip8: Chip8) {
 
         clear_background(BLACK);
 
-        dbg!(&chip8.display.len());
-
         for y in 0..32 {
             for x in 0..64 {
                 draw_rectangle(
-                    (x * 10) as f32,
-                    (y * 10) as f32,
-                    10.0,
-                    10.0,
+                    (x * 20) as f32,
+                    (y * 20) as f32,
+                    20.0,
+                    20.0,
                     if chip8.display[y * 64 + x] == 1 {
                         WHITE
                     } else {
@@ -42,8 +40,8 @@ async fn display_render(mut chip8: Chip8) {
 fn window_config() -> Conf {
     Conf {
         window_title: "Chip-8".to_string(),
-        window_width: 640,
-        window_height: 320,
+        window_width: 1280,
+        window_height: 640,
         ..Default::default()
     }
 }
