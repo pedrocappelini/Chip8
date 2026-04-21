@@ -103,23 +103,79 @@ impl Chip8 {
             (0x0, 0x0, 0xE, 0x0) => {
                 self.display.fill(0);
             }
-            //0x6xnn
-            (0x6, _, _, _) => {
-                self.register[n2 as usize] = (n3 << 4) as u8 | n4 as u8;
-            }
-            //0xAnnn
-            (0xA, _, _, _) => {
-                self.index = (n2 << 8) | (n3 << 4) | n4;
-            }
+
+            //0x00EE
+            (0x0, _, _, 0xE) => {}
+
             //0x1nnn
             (0x1, _, _, _) => {
                 self.pc = (n2 << 8) | (n3 << 4) | n4;
             }
-            //0x7xnn
+
+            //0x2nnn
+            (0x2, _, _, _) => {}
+
+            //0x3xkk
+            (0x3, _, _, _) => {}
+
+            //0x4kk
+            (0x4, _, _, _) => {}
+
+            //0x5xy0
+            (0x5, _, _, _) => {}
+
+            //0x6xkk
+            (0x6, _, _, _) => {
+                self.register[n2 as usize] = (n3 << 4) as u8 | n4 as u8;
+            }
+
+            //0x7xkk
             (0x7, _, _, _) => {
                 self.register[n2 as usize] =
                     self.register[n2 as usize] + ((n3 << 4) as u8 | n4 as u8);
             }
+
+            //0x8xy0
+            (0x8, _, _, 0x0) => {}
+
+            //0x8xy1
+            (0x8, _, _, 0x1) => {}
+
+            //0x8xy2
+            (0x8, _, _, 0x2) => {}
+
+            //0x8xy3
+            (0x8, _, _, 0x3) => {}
+
+            //0x8xy4
+            (0x8, _, _, 0x4) => {}
+
+            //0x8xy5
+            (0x8, _, _, 0x5) => {}
+
+            //0x8xy6
+            (0x8, _, _, 0x6) => {}
+
+            //0x8xy7
+            (0x8, _, _, 0x7) => {}
+
+            //0x8xyE
+            (0x8, _, _, 0xE) => {}
+
+            //0x9xy0
+            (0x9, _, _, _) => {}
+
+            //0xAnnn
+            (0xA, _, _, _) => {
+                self.index = (n2 << 8) | (n3 << 4) | n4;
+            }
+
+            //0xBnnn
+            (0xB, _, _, _) => {}
+
+            //0xCxkk
+            (0xC, _, _, _) => {}
+
             //0xDxyn
             (0xD, vx, vy, n) => {
                 let x_pos = self.register[vx as usize] as usize % 64;
@@ -146,6 +202,40 @@ impl Chip8 {
                     }
                 }
             }
+
+            //0xEx9E
+            (0xE, _, 0x9, _) => {}
+
+            //0xExA1
+            (0xE, _, 0xA, _) => {}
+
+            //0xFx07
+            (0xF, _, 0x0, 0x7) => {}
+
+            //0xFx0A
+            (0xF, _, 0x0, 0xA) => {}
+
+            //0xFx15
+            (0xF, _, 0x1, 0x5) => {}
+
+            //0xFx18
+            (0xF, _, 0x1, 0x8) => {}
+
+            //0xFx1E
+            (0xF, _, 0x1, 0xE) => {}
+
+            //0xFx29
+            (0xF, _, 0x2, 0x9) => {}
+
+            //0xFx33
+            (0xF, _, 0x3, 0x3) => {}
+
+            //0xFx55
+            (0xF, _, 0x5, 0x5) => {}
+
+            //0xFx65
+            (0xF, _, 0x6, 0x5) => {}
+
             //0xFFFF (doesn't exist on the chip8 architecture).
             (0xF, 0xF, 0xF, 0xF) => {
                 self.display.fill(1);
