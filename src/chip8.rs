@@ -1,4 +1,3 @@
-use rand::Rng;
 use std::fs::File;
 use std::io::Read;
 
@@ -7,10 +6,10 @@ pub struct Chip8 {
     register: [u8; 16],
     stack: [u16; 16],
     pub display: [u8; 64 * 32],
-    keypad: [u8; 16],
+    pub keypad: [u8; 16],
     index: u16,
-    s_timer: u8,
-    d_timer: u8,
+    pub s_timer: u8,
+    pub d_timer: u8,
     pc: u16,
     sp: u8,
 }
@@ -251,20 +250,19 @@ impl Chip8 {
             (0xD, vx, vy, n) => {
                 let x_pos = self.register[vx as usize] as usize % 64;
                 let y_pos = self.register[vy as usize] as usize % 32;
-                self.register[0xF] = 0; // Reset collision flag
+                self.register[0xF] = 0;
 
                 for row in 0..n {
                     let sprite_byte = self.memory[(self.index + row) as usize];
-                    if y_pos + row as usize >= 32 {
-                        break;
-                    }
+                    let y = (y_pos + row as usize) % 32;
+
                     for col in 0..8 {
-                        if x_pos + col >= 64 {
-                            break;
-                        }
                         let sprite_pixel = (sprite_byte >> (7 - col)) & 1;
+
                         if sprite_pixel == 1 {
-                            let screen_idx = (x_pos + col) + ((y_pos + row as usize) * 64);
+                            let x = (x_pos + col) % 64;
+                            let screen_idx = x + (y * 64);
+
                             if self.display[screen_idx] == 1 {
                                 self.register[0xF] = 1;
                             }
@@ -275,37 +273,88 @@ impl Chip8 {
             }
 
             //0xEx9E
-            (0xE, _, 0x9, _) => {}
+            (0xE, _, 0x9, _) => {
+                let key = self.register[n2 as usize];
+
+                if key < 16 && self.keypad[key as usize] == 1 {
+                    self.pc += 2;
+                }
+            }
 
             //0xExA1
-            (0xE, _, 0xA, _) => {}
+            (0xE, _, 0xA, _) => {
+                let key = self.register[n2 as usize];
+
+                if key < 16 && self.keypad[key as usize] != 1 {
+                    self.pc += 2;
+                }
+            }
 
             //0xFx07
-            (0xF, _, 0x0, 0x7) => {}
+            (0xF, _, 0x0, 0x7) => {
+                self.register[n2 as usize] = self.d_timer;
+            }
 
             //0xFx0A
-            (0xF, _, 0x0, 0xA) => {}
+            (0xF, _, 0x0, 0xA) => {
+                let mut key_pressed = false;
+
+                for i in 0..16 {
+                    if self.keypad[i] == 1 {
+                        self.register[n2 as usize] = i as u8;
+                        key_pressed = true;
+                        break;
+                    }
+                }
+
+                if !key_pressed {
+                    self.pc -= 2;
+                }
+            }
 
             //0xFx15
-            (0xF, _, 0x1, 0x5) => {}
+            (0xF, _, 0x1, 0x5) => {
+                self.d_timer = self.register[n2 as usize];
+            }
 
             //0xFx18
-            (0xF, _, 0x1, 0x8) => {}
+            (0xF, _, 0x1, 0x8) => {
+                self.s_timer = self.register[n2 as usize];
+            }
 
             //0xFx1E
-            (0xF, _, 0x1, 0xE) => {}
+            (0xF, _, 0x1, 0xE) => {
+                self.index = self.index.wrapping_add(self.register[n2 as usize] as u16)
+            }
 
             //0xFx29
-            (0xF, _, 0x2, 0x9) => {}
+            (0xF, _, 0x2, 0x9) => {
+                let character = self.register[n2 as usize] as u16;
+                self.index = START_FONT_ADRESS + (character * 5);
+            }
 
             //0xFx33
-            (0xF, _, 0x3, 0x3) => {}
+            (0xF, _, 0x3, 0x3) => {
+                let value = self.register[n2 as usize];
+
+                self.memory[self.index as usize] = value / 100;
+                self.memory[(self.index + 1) as usize] = (value / 10) % 10;
+                self.memory[(self.index + 2) as usize] = value % 10;
+            }
 
             //0xFx55
-            (0xF, _, 0x5, 0x5) => {}
+            (0xF, _, 0x5, 0x5) => {
+                for i in 0..=n2 as usize {
+                    self.memory[(self.index + i as u16) as usize] = self.register[i];
+                }
+            }
 
             //0xFx65
-            (0xF, _, 0x6, 0x5) => {}
+            (0xF, _, 0x6, 0x5) => {
+                for i in 0..=n2 as usize {
+                    self.register[i] = self.memory[(self.index + i as u16) as usize];
+                }
+            }
 
             //0xFFFF (doesn't exist on the chip8 architecture).
             (0xF, 0xF, 0xF, 0xF) => {
