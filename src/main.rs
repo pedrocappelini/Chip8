@@ -7,12 +7,16 @@ use macroquad::prelude::*;
 async fn main() {
     let mut chip8 = Chip8::new();
 
-    chip8.load_rom("roms/Space Invaders [David Winter].ch8");
+    chip8.load_rom("roms/rockto.ch8");
     display_render(chip8).await;
 }
 
 async fn display_render(mut chip8: Chip8) {
     loop {
+        if chip8.exit {
+            break;
+        }
+
         key_listener(&mut chip8);
 
         for _ in 0..10 {
@@ -29,12 +33,26 @@ async fn display_render(mut chip8: Chip8) {
 
         clear_background(BLACK);
 
-        let sq_w = screen_width() / 64.0;
-        let sq_h = screen_height() / 32.0;
+        let sq_w: f32;
+        let sq_h: f32;
+        let res_w: f32;
+        let res_h: f32;
 
-        for y in 0..32 {
-            for x in 0..64 {
-                if chip8.display[y * 64 + x] == 1 {
+        if chip8.high_res == false {
+            res_w = 64.0;
+            res_h = 32.0;
+            sq_w = screen_width() / res_w;
+            sq_h = screen_height() / res_h;
+        } else {
+            res_w = 128.0;
+            res_h = 64.0;
+            sq_w = screen_width() / res_w;
+            sq_h = screen_height() / res_h;
+        }
+
+        for y in 0..res_h as usize {
+            for x in 0..res_w as usize {
+                if chip8.display[y * res_w as usize + x] == 1 {
                     draw_rectangle(x as f32 * sq_w, y as f32 * sq_h, sq_w, sq_h, WHITE);
                 }
             }

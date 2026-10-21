@@ -2,23 +2,27 @@ use std::fs::File;
 use std::io::Read;
 
 pub struct Chip8 {
-    memory: [u8; 4096],
+    pub flags: [u8; 8],
+    pub memory: [u8; 4096],
     register: [u8; 16],
     stack: [u16; 16],
-    pub display: [u8; 64 * 32],
+    pub display: [u8; 128 * 64], //made bigger for the SCHIP
     pub keypad: [u8; 16],
     index: u16,
     pub s_timer: u8,
     pub d_timer: u8,
     pc: u16,
     sp: u8,
+    pub high_res: bool,
+    pub exit: bool,
 }
 
 const START_ADRESS: u16 = 0x200;
 const START_FONT_ADRESS: u16 = 0x00;
+const START_BIG_FONT_ADRESS: u16 = 0x50;
 const FONTSET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-    0x20, 0x70, 0x20, 0x20, 0x70, // 1
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
     0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
     0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
     0x90, 0x90, 0xF0, 0x10, 0x10, // 4
@@ -34,6 +38,18 @@ const FONTSET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
+const BIG_FONTSET: [u8; 100] = [
+    0x3C, 0x7E, 0xE7, 0xC3, 0xC3, 0xC3, 0xC3, 0xE7, 0x7E, 0x3C, // 0
+    0x18, 0x38, 0x58, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, // 1
+    0x3E, 0x7F, 0xC3, 0x06, 0x0C, 0x18, 0x30, 0x60, 0xFF, 0xFF, // 2
+    0x3C, 0x7E, 0x07, 0x03, 0x1E, 0x1E, 0x03, 0x07, 0x7E, 0x3C, // 3
+    0x06, 0x0E, 0x1E, 0x36, 0x66, 0xC6, 0xFF, 0xFF, 0x06, 0x06, // 4
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFC, 0xFE, 0x03, 0x03, 0x7E, 0x3C, // 5
+    0x3E, 0x7C, 0xC0, 0xC0, 0xFC, 0xFE, 0xC3, 0xC3, 0x7E, 0x3C, // 6
+    0xFF, 0xFF, 0x03, 0x06, 0x0C, 0x18, 0x30, 0x60, 0x60, 0x60, // 7
+    0x3C, 0x7E, 0xC3, 0xC3, 0x7E, 0x7E, 0xC3, 0xC3, 0x7E, 0x3C, // 8
+    0x3C, 0x7E, 0xC3, 0xC3, 0x7F, 0x3F, 0x03, 0x03, 0x3E, 0x7C, // 9
+];
 
 impl Chip8 {
     //constructor
@@ -41,17 +57,22 @@ impl Chip8 {
         let mut memory = [0u8; 4096];
         memory[START_FONT_ADRESS as usize..START_FONT_ADRESS as usize + FONTSET.len()]
             .copy_from_slice(&FONTSET);
+        memory[START_BIG_FONT_ADRESS as usize..START_BIG_FONT_ADRESS as usize + BIG_FONTSET.len()]
+            .copy_from_slice(&BIG_FONTSET);
         Self {
             memory,
+            flags: [0; 8],
             register: [0; 16],
             stack: [0; 16],
-            display: [0; 64 * 32],
+            display: [0; 128 * 64],
             keypad: [0; 16],
             index: 0,
             s_timer: 0,
             d_timer: 0,
             pc: START_ADRESS,
             sp: 0,
+            high_res: false,
+            exit: false,
         }
     }
 
@@ -88,7 +109,7 @@ impl Chip8 {
         let left_byte = self.memory[self.pc as usize];
         let right_byte = self.memory[(self.pc + 1) as usize];
         let opcode = u16::from_be_bytes([left_byte, right_byte]);
-        //println!("{:04X}", opcode);
+        println!("{:04X}", opcode);
         self.pc += 2;
 
         //DECODE
@@ -105,7 +126,7 @@ impl Chip8 {
             }
 
             //0x00EE
-            (0x0, _, _, 0xE) => {
+            (0x0, _, 0xE, 0xE) => {
                 self.sp -= 1;
                 self.pc = self.stack[self.sp as usize];
             }
@@ -247,26 +268,66 @@ impl Chip8 {
             }
 
             //0xDxyn
+            //edited to fit the SCHIP high_res
             (0xD, vx, vy, n) => {
-                let x_pos = self.register[vx as usize] as usize % 64;
-                let y_pos = self.register[vy as usize] as usize % 32;
+                let width = if self.high_res { 128 } else { 64 };
+                let height = if self.high_res { 64 } else { 32 };
+
+                let x_pos = self.register[vx as usize] as usize % width;
+                let y_pos = self.register[vy as usize] as usize % height;
                 self.register[0xF] = 0;
 
-                for row in 0..n {
-                    let sprite_byte = self.memory[(self.index + row) as usize];
-                    let y = (y_pos + row as usize) % 32;
+                if n == 0 {
+                    for row in 0..16 {
+                        //if 16x16, needs two bytes
+                        let byte1 = self.memory[(self.index + (row * 2)) as usize];
+                        let byte2 = self.memory[(self.index + (row * 2) + 1) as usize];
+                        let y = (y_pos + row as usize) % height;
 
-                    for col in 0..8 {
-                        let sprite_pixel = (sprite_byte >> (7 - col)) & 1;
-
-                        if sprite_pixel == 1 {
-                            let x = (x_pos + col) % 64;
-                            let screen_idx = x + (y * 64);
-
-                            if self.display[screen_idx] == 1 {
-                                self.register[0xF] = 1;
+                        //draw 1st byte
+                        for col in 0..8 {
+                            let sprite_pixel = (byte1 >> (7 - col)) & 1;
+                            if sprite_pixel == 1 {
+                                let x = (x_pos + col) % width;
+                                let screen_idx = x + (y * width);
+                                if self.display[screen_idx] == 1 {
+                                    self.register[0xF] = 1;
+                                }
+                                self.display[screen_idx] ^= 1;
                             }
-                            self.display[screen_idx] ^= 1;
+                        }
+
+                        //draw 2nd byte
+                        for col in 0..8 {
+                            let sprite_pixel = (byte2 >> (7 - col)) & 1;
+                            if sprite_pixel == 1 {
+                                let x = (x_pos + col + 8) % width;
+                                let screen_idx = x + (y * width);
+                                if self.display[screen_idx] == 1 {
+                                    self.register[0xF] = 1;
+                                }
+                                self.display[screen_idx] ^= 1;
+                            }
+                        }
+                    }
+                } else {
+                    //standard sprite
+                    for row in 0..n {
+                        let sprite_byte = self.memory[(self.index + row as u16) as usize];
+                        let y = (y_pos + row as usize) % height;
+
+                        for col in 0..8 {
+                            let sprite_pixel = (sprite_byte >> (7 - col)) & 1;
+
+                            if sprite_pixel == 1 {
+                                let x = (x_pos + col) % width;
+                                let screen_idx = x + (y * width);
+
+                                if self.display[screen_idx] == 1 {
+                                    self.register[0xF] = 1;
+                                }
+                                self.display[screen_idx] ^= 1;
+                            }
                         }
                     }
                 }
@@ -356,8 +417,106 @@ impl Chip8 {
                 }
             }
 
+            //new set of instructions for an SCHIP
+            //0x00FF
+            (0x0, 0x0, 0xF, 0xF) => {
+                self.high_res = true;
+                self.display.fill(0);
+            }
+
+            //0x00FE
+            (0x0, 0x0, 0xF, 0xE) => {
+                self.high_res = false;
+                self.display.fill(0);
+            }
+
+            //0X00FD
+            (0x0, 0x0, 0xF, 0xD) => {
+                self.exit = true;
+            }
+
+            //0x00Cn
+            (0x0, 0x0, 0xC, _) => {
+                let n = n4 as usize;
+                let old_display = self.display;
+                for y in n..64 {
+                    for x in 0..128 {
+                        let d_index = (y * 128) + x;
+                        let old_d_index = ((y - n) * 128) + x;
+                        self.display[d_index] = old_display[old_d_index];
+                    }
+                }
+
+                for y in 0..n {
+                    for x in 0..128 {
+                        let d_index = (y * 128) + x;
+                        self.display[d_index] = 0;
+                    }
+                }
+            }
+
+            //0x00FB
+            (0x0, 0x0, 0xF, 0xB) => {
+                let old_display = self.display;
+                for y in 0..64 {
+                    for x in 4..128 {
+                        let d_index = (y * 128) + x;
+                        let old_d_index = (y * 128) + (x - 4);
+                        self.display[d_index] = old_display[old_d_index];
+                    }
+                }
+
+                for y in 0..64 {
+                    for x in 0..4 {
+                        let d_index = (y * 128) + x;
+                        self.display[d_index] = 0;
+                    }
+                }
+            }
+
+            //0x00FC
+            (0x0, 0x0, 0xF, 0xC) => {
+                let old_display = self.display;
+                for y in 0..64 {
+                    for x in 0..124 {
+                        let d_index = (y * 128) + x;
+                        let old_d_index = (y * 128) + (x + 4);
+                        self.display[d_index] = old_display[old_d_index];
+                    }
+                }
+
+                for y in 0..64 {
+                    for x in 124..128 {
+                        let d_index = (y * 128) + x;
+                        self.display[d_index] = 0;
+                    }
+                }
+            }
+
+            //0xFx30
+            (0xF, _, 0x3, 0x0) => {
+                let digit = self.register[n2 as usize] as u16;
+                self.index = START_BIG_FONT_ADRESS + (digit * 10);
+            }
+
+            //0xFx75
+            (0xF, _, 0x7, 0x5) => {
+                let target = n2.min(7);
+                for x in 0..=target {
+                    self.flags[x as usize] = self.register[x as usize];
+                }
+            }
+
+            //0xFx85
+            (0xF, _, 0x8, 0x5) => {
+                let target = n2.min(7);
+                for x in 0..=target {
+                    self.register[x as usize] = self.flags[x as usize];
+                }
+            }
+
             //0xFFFF (doesn't exist on the chip8 architecture).
-            (0xF, 0xF, 0xF, 0xF) => {
+            (0xF, _, 0xF, 0xF) => {
                 self.display.fill(1);
             }
             (_, _, _, _) => {
